@@ -7,7 +7,7 @@ class ChessServer:
         self.PORT = port
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.server_socket.bind((self.HOST, self.PORT))
-        self.server_socket.listen(2) 
+        self.server_socket.listen(2)
         self.clients = [] 
         self.colors = ['white', 'black'] 
 

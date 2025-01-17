@@ -7,19 +7,21 @@ import threading
 import pyodbc
 import uuid
 import queue
+import time
 
 class ChessGame:
     def __init__(self, host, port):
-        self.db_server = ''                
-        self.db_database = ''          
-        self.db_username = ''             
-        self.db_password = '' 
+        self.db_server = ''                                
+        self.db_database = ''                         
+        self.db_username = ''                             
+        self.db_password = ''          
 
-        self.db_connection = pyodbc.connect(         
-            f"DRIVER=ODBC Driver 17 for SQL Server;" 
-            f"SERVER={self.db_server};"                   
-            f"DATABASE={self.db_database};"               
-            f"UID={self.db_username};"                    
+
+        self.db_connection = pyodbc.connect(                
+            f"DRIVER=ODBC Driver 17 for SQL Server;"        
+            f"SERVER={self.db_server};"                     
+            f"DATABASE={self.db_database};"                 
+            f"UID={self.db_username};"                      
             f"PWD={self.db_password};"
         )
         self.master_db_connection = pyodbc.connect(
@@ -29,39 +31,64 @@ class ChessGame:
             f"PWD={self.db_password};"
         )
 
-        self.create_database_if_not_exists()
-        self.create_table_if_not_exists()
-        self.HOST = host
-        self.PORT = port
-        self.client_socket = None
-        self.board = chess.Board()
-        self.root = tk.Tk()
-        self.root.title("Chess Game")
-        self.game_mode = ""
-        self.players = []
-        self.move_history = []
-        self.username_entry = tk.Entry(self.root)
-        self.username_entry.pack()
-        self.username_entry.config(state="normal")
-        self.username = ""
-        self.winner = ""
-        self.points = 0
-        self.game_id = ""
-        self.square_size_y = 55
-        self.square_size_x = 75
-        self.player_colors = {
+        self.create_database_if_not_exists()          
+        self.create_table_if_not_exists()             
+        self.HOST = host                             
+        self.PORT = port                             
+        self.client_socket = None                    
+        self.board = chess.Board()           
+        self.root = tk.Tk()                           
+        self.root.title("Chess Game")                 
+        self.game_mode = ""                           
+        self.players = []                             
+        self.move_history = []                        
+        self.username_entry = tk.Entry(self.root)     
+        self.username_entry.pack()                    
+        self.username_entry.config(state="normal")    
+        self.username = ""                            
+        self.winner = ""                              
+        self.points = 0                               
+        self.game_id = ""                             
+        self.square_size_y = 55                       
+        self.square_size_x = 75                       
+        self.player_colors = {                        
             'white': "White",
             'black': "Black",
         }
-        self.assigned_color = "white"
-        self.first_game = True
-        self.turn_history = queue.Queue()
-        self.create_games_table_if_not_exists()
-        self.create_turns_table_if_not_exists()
-        self.create_widgets()
-        self.disable_buttons()
-        self.create_leaderboard()
+        self.assigned_color = "white"                 
+        self.first_game = True                        
+        self.turn_history = queue.Queue()             
+        self.create_games_table_if_not_exists()       
+        self.create_turns_table_if_not_exists()       
+        self.create_widgets()                         
+        self.disable_buttons()                        
+        self.create_leaderboard()                     
+        self.timer_duration = 20  
+        self.timer_thread = None
+        self.timer_running = False
+        
 
+    def start_timer(self):
+        self.timer_thread = threading.Thread(target=self.timer_countdown)
+        self.timer_running = True
+        self.timer_thread.start()
+
+    def timer_countdown(self):
+        start_time = time.time()
+        while self.timer_running:
+            current_time = time.time()
+            elapsed_time = current_time - start_time
+            remaining_time = self.timer_duration - elapsed_time
+            print(remaining_time)
+            if remaining_time <= 0:
+                self.end_game_due_to_timeout()
+                break
+
+            time.sleep(1)  
+
+    def end_game_due_to_timeout(self):
+        print("Game ended due to timeout.")
+        self.disable_buttons()  
     def create_widgets(self):
         self.set_username_button = ttk.Button(self.root, text="Set Username", command=self.set_username)
         self.set_username_button.pack()
@@ -476,6 +503,7 @@ class ChessGame:
         return evaluation
 
     def new_game(self):
+        self.start_timer()
         self.leaderboard_table.pack_forget()
         self.leaderboard_label.pack_forget()
         self.canvas.config(width=600, height=400)

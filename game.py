@@ -10,16 +10,16 @@ import queue
 
 class ChessGame:
     def __init__(self, host, port):
-        self.db_server = '.'
-        self.db_database = ''
-        self.db_username = ''
-        self.db_password = ''
+        self.db_server = ''                
+        self.db_database = ''          
+        self.db_username = ''             
+        self.db_password = '' 
 
-        self.db_connection = pyodbc.connect(
-            f"DRIVER=ODBC Driver 17 for SQL Server;"
-            f"SERVER={self.db_server};"
-            f"DATABASE={self.db_database};"
-            f"UID={self.db_username};"
+        self.db_connection = pyodbc.connect(         
+            f"DRIVER=ODBC Driver 17 for SQL Server;" 
+            f"SERVER={self.db_server};"                   
+            f"DATABASE={self.db_database};"               
+            f"UID={self.db_username};"                    
             f"PWD={self.db_password};"
         )
         self.master_db_connection = pyodbc.connect(
@@ -44,9 +44,9 @@ class ChessGame:
         self.username_entry.pack()
         self.username_entry.config(state="normal")
         self.username = ""
-        self.winner=""
-        self.points=0
-        self.game_id=""
+        self.winner = ""
+        self.points = 0
+        self.game_id = ""
         self.square_size_y = 55
         self.square_size_x = 75
         self.player_colors = {
@@ -54,7 +54,7 @@ class ChessGame:
             'black': "Black",
         }
         self.assigned_color = "white"
-        self.first_game=True
+        self.first_game = True
         self.turn_history = queue.Queue()
         self.create_games_table_if_not_exists()
         self.create_turns_table_if_not_exists()
@@ -118,9 +118,6 @@ class ChessGame:
         self.canvas.bind("<Button-1>", self.on_square_click)
         self.selected_square = None
 
-    def launch_game(self):
-        self.root.mainloop()
-
     def create_leaderboard(self):
         try:
             cursor = self.db_connection.cursor()
@@ -130,8 +127,8 @@ class ChessGame:
             leaderboard_frame = ttk.Frame(self.root)
             leaderboard_frame.pack(side="right", padx=10, pady=10, fill="y")
 
-            leaderboard_label = ttk.Label(leaderboard_frame, text="Leaderboard", font=("Helvetica", 16, "bold"))
-            leaderboard_label.pack(side="top", pady=(0, 10))
+            self.leaderboard_label = ttk.Label(leaderboard_frame, text="Leaderboard", font=("Helvetica", 16, "bold"))
+            self.leaderboard_label.pack(side="top", pady=(0, 10))
 
             style = ttk.Style()
             style.configure("Treeview", font=("Helvetica", 12))
@@ -203,7 +200,7 @@ class ChessGame:
 
         if existing_user:
             print(f"Welcome back, {self.username}!")
-            self.points = existing_user.Points 
+            self.points = existing_user.Points
         else:
             cursor.execute("INSERT INTO Users (Username, Points) VALUES (?, ?)", (self.username, 0))
             print(f"Welcome, {self.username}!")
@@ -249,7 +246,7 @@ class ChessGame:
             self.disable_buttons()
             return True
         return False
-    
+
     def update_user_points(self, username, points):
         try:
             cursor = self.db_connection.cursor()
@@ -269,8 +266,8 @@ class ChessGame:
                 moves_frame = ttk.Frame(self.root)
                 moves_frame.pack(side="right", padx=10, pady=10, fill="y")
 
-                moves_label = ttk.Label(moves_frame, text="Moves", font=("Helvetica", 16, "bold"))
-                moves_label.pack(side="top", pady=(0, 10))
+                self.moves_label = ttk.Label(moves_frame, text="Moves", font=("Helvetica", 16, "bold"))
+                self.moves_label.pack(side="top", pady=(0, 10))
 
                 self.moves_listbox = tk.Listbox(moves_frame, font=("Helvetica", 12), selectmode="browse")
                 self.moves_listbox.pack(fill="both", expand=True)
@@ -373,11 +370,15 @@ class ChessGame:
             self.send_move(move)
         self.record_turn(self.game_id, move)
         self.board.push(move)
-        self.move_history.append(move)  # Add the move to the stack
+        self.move_history.append(move)
 
         self.update_board()
 
         if self.check_win():
+            self.create_leaderboard()
+            self.moves_label.pack_forget()
+            self.moves_listbox.pack_forget()
+            self.undo_button.config(state="disabled")
             self.canvas.config(width=0, height=0)
             self.new_game_button.config(state="normal")
             return
@@ -475,6 +476,8 @@ class ChessGame:
         return evaluation
 
     def new_game(self):
+        self.leaderboard_table.pack_forget()
+        self.leaderboard_label.pack_forget()
         self.canvas.config(width=600, height=400)
         self.undo_button.config(state="disabled")
         self.create_new_game()
@@ -524,7 +527,7 @@ class ChessGame:
             print(f"Error creating/checking turns table: {str(e)}")
 
     def create_new_game(self):
-        game_id = uuid.uuid4()  # Generate a unique game ID
+        game_id = uuid.uuid4()  
         try:
             cursor = self.db_connection.cursor()
             cursor.execute("INSERT INTO Games (ID) VALUES (?)", (str(game_id),))
@@ -539,9 +542,9 @@ class ChessGame:
     def record_turn(self, game_id, move):
         try:
             cursor = self.db_connection.cursor()
-            cursor.execute("INSERT INTO Moves (GameID, Move) VALUES (?, ?)", (str(game_id), f"{move.uci()[0:2]}=>{move.uci()[2:4]} {self.piece_symbols[self.board.piece_at(move.from_square).symbol()]}"))
+            cursor.execute("INSERT INTO Moves (GameID, Move) VALUES (?, ?)", (str(game_id), f"{move.uci()[0:2]}=>{move.uci()[2:4]} {self.piece_symbols[self.board.piece_at(move.from_square).symbol()]} {'white' if self.board.piece_at(move.from_square).color == chess.WHITE else 'black'}"))
             self.db_connection.commit()
-            self.turn_history.put(move) 
+            self.turn_history.put(move)
             self.moves_listbox.delete(0, tk.END)
             cursor.execute("SELECT Move FROM Moves WHERE GameID = ?", (str(game_id),))
             moves_data = cursor.fetchall()

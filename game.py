@@ -9,92 +9,95 @@ import uuid
 import queue
 import time
 
-class ChessGame:
-    def __init__(self, host, port):
-        self.db_server = ''                                
-        self.db_database = ''                         
-        self.db_username = ''                             
-        self.db_password = ''          
+
+class DatabaseManager:
+    DRIVER = "ODBC Driver 17 for SQL Server"
+    TRUSTED_CONNECTION = "yes"
+
+    def __init__(self, server, database,username,password):
+        self.db_server = server
+        self.db_database = database
+        self.db_username = username
+        self.db_password = password
+        self.db_connection = self.create_db_connection(self.db_server, self.TRUSTED_CONNECTION)
+        self.master_db_connection = self.create_db_connection(self.db_server, self.TRUSTED_CONNECTION)
+        self.create_database_if_not_exists()
+        self.create_table_if_not_exists()
+        self.create_games_table_if_not_exists()
+        self.create_turns_table_if_not_exists()
 
 
-        self.db_connection = pyodbc.connect(                
-            f"DRIVER=ODBC Driver 17 for SQL Server;"        
-            f"SERVER={self.db_server};"                     
-            f"DATABASE={self.db_database};"                 
-            f"UID={self.db_username};"                      
-            f"PWD={self.db_password};"
+    def create_db_connection(self, server, trusted_conn):
+        return pyodbc.connect(
+            f"DRIVER={self.DRIVER};"
+            f"SERVER={server};"
+            f"DATABASE={self.db_database};"
         )
-        self.master_db_connection = pyodbc.connect(
-            f"DRIVER=ODBC Driver 17 for SQL Server;"
-            f"SERVER={self.db_server};"
-            f"UID={self.db_username};"
-            f"PWD={self.db_password};"
-        )
 
-        self.create_database_if_not_exists()          
-        self.create_table_if_not_exists()             
-        self.HOST = host                             
-        self.PORT = port                             
-        self.client_socket = None                    
-        self.board = chess.Board()           
-        self.root = tk.Tk()                           
-        self.root.title("Chess Game")                 
-        self.game_mode = ""                           
-        self.players = []                             
-        self.move_history = []                        
-        self.username_entry = tk.Entry(self.root)     
-        self.username_entry.pack()                    
-        self.username_entry.config(state="normal")    
-        self.username = ""                            
-        self.winner = ""                              
-        self.points = 0                               
-        self.game_id = ""                             
-        self.square_size_y = 55                       
-        self.square_size_x = 75                       
-        self.player_colors = {                        
-            'white': "White",
-            'black': "Black",
-        }
-        self.assigned_color = "white"                 
-        self.first_game = True                        
-        self.turn_history = queue.Queue()             
-        self.create_games_table_if_not_exists()       
-        self.create_turns_table_if_not_exists()       
-        self.create_widgets()                         
-        self.disable_buttons()                        
-        self.create_leaderboard()                     
-        self.timer_duration = 20  
-        self.timer_thread = None
-        self.timer_running = False
-        
+    def create_database_if_not_exists(self):
+        try:
+            cursor = self.master_db_connection.cursor()
+            cursor.execute(f"SELECT * FROM sys.databases WHERE name = '{self.db_database}'")
+            database_exists = cursor.fetchone()
+            if not database_exists:
+                cursor.execute(f"CREATE DATABASE {self.db_database}")
+                self.master_db_connection.commit()
+            cursor.close()
+        except pyodbc.Error as e:
+            print(f"Error creating/checking database: {str(e)}")
 
-    def start_timer(self):
-        self.timer_thread = threading.Thread(target=self.timer_countdown)
-        self.timer_running = True
-        self.timer_thread.start()
+    def create_table_if_not_exists(self):
+        try:
+            cursor = self.db_connection.cursor()
+            cursor.execute(
+                f"IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'Users') "
+                f"CREATE TABLE Users ("
+                f"ID INT IDENTITY(1,1) PRIMARY KEY,"
+                f"Username VARCHAR(255),"
+                f"Points INT"
+                f")"
+            )
+            self.db_connection.commit()
+            cursor.close()
+        except pyodbc.Error as e:
+            print(f"Error creating/checking table: {str(e)}")
 
-    def timer_countdown(self):
-        start_time = time.time()
-        while self.timer_running:
-            current_time = time.time()
-            elapsed_time = current_time - start_time
-            remaining_time = self.timer_duration - elapsed_time
-            print(remaining_time)
-            if remaining_time <= 0:
-                self.end_game_due_to_timeout()
-                break
+    def create_games_table_if_not_exists(self):
+        try:
+            cursor = self.db_connection.cursor()
+            cursor.execute(
+                f"IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'Games') "
+                f"CREATE TABLE Games ("
+                f"ID UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID()"
+                f")"
+            )
+            self.db_connection.commit()
+            cursor.close()
+        except pyodbc.Error as e:
+            print(f"Error creating/checking games table: {str(e)}")
 
-            time.sleep(1)  
+    def create_turns_table_if_not_exists(self):
+        try:
+            cursor = self.db_connection.cursor()
+            cursor.execute(
+                f"IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'Moves') "
+                f"CREATE TABLE Moves ("
+                f"ID INT IDENTITY(1,1) PRIMARY KEY,"
+                f"GameID UNIQUEIDENTIFIER,"
+                f"Move NVARCHAR(255)"
+                f")"
+            )
+            self.db_connection.commit()
+            cursor.close()
+        except pyodbc.Error as e:
+            print(f"Error creating/checking turns table: {str(e)}")
 
-    def end_game_due_to_timeout(self):
-        print("Game ended due to timeout.")
-        self.disable_buttons()  
-    def create_widgets(self):
-        self.set_username_button = ttk.Button(self.root, text="Set Username", command=self.set_username)
-        self.set_username_button.pack()
-        self.connect_button = ttk.Button(self.root, text="Connect to Game", command=self.connect_to_game)
-        self.connect_button.pack()
-        self.connect_button.config(state="disabled")
+
+class GameBoard:
+    def __init__(self):
+        self.board = chess.Board()
+        self.square_size_y = 55
+        self.square_size_x = 75
         self.piece_symbols = {
             'P': '♟',
             'N': '♞',
@@ -109,6 +112,171 @@ class ChessGame:
             'q': '♛',
             'k': '♚',
         }
+
+
+    def update_board(self,canvas, isPlayerBlack):
+        canvas.delete("all")
+        for row in range(8):
+            for col in range(8):
+                x1 = col * self.square_size_x
+                y1 = row * self.square_size_y
+                x2 = x1 + self.square_size_x
+                y2 = y1 + self.square_size_y
+                color = "brown" if (row + col) % 2 == 0 else "grey"
+                canvas.create_rectangle(x1, y1, x2, y2, fill=color)
+                piece = self.board.piece_at(chess.square(col, 7 - row))
+                if isPlayerBlack:
+                    piece = self.board.piece_at(chess.square(col, row))
+                if piece is not None:
+                    symbol = self.piece_symbols[piece.symbol()]
+                    figColor = "white" if piece.color == chess.WHITE else "black"
+                    canvas.create_text((x1 + x2) / 2, (y1 + y2) / 2, text=symbol, font=("Courier", 24),
+                                            fill=figColor)
+        canvas.update()
+
+
+class TimerManager:
+    def __init__(self):
+        self.timer_duration = 180  
+        self.timer_thread = None
+        self.timer_running = False
+        self.timer_pause = False
+        
+    def set_parameters(self,board, minutes,game_mode,points,combo,username, status_label, canvas):
+        self.game_mode=game_mode
+        self.points=points
+        self.combo=combo
+        self.username=username
+        self.status_label=status_label
+        self.board=board
+        self.canvas=canvas
+        self.minutes=minutes
+        
+    def stop_timer(self):
+        self.timer_running = False
+        if self.timer_thread and self.timer_thread.is_alive():
+            try:
+                self.timer_thread.run(False)
+            except:
+                self.minutes.configure(text="Game was stopped")
+
+
+    def start_timer(self, duration):
+        self.timer_thread = threading.Thread(target=self.timer_countdown)
+        self.timer_running = True
+        self.timer_thread.start()
+        if(duration):
+            self.timer_duration = duration
+
+    def timer_countdown(self):
+        while self.timer_running == True:
+            minutes, seconds = divmod(self.timer_duration, 60)
+            timer_str = '{:02d}:{:02d}'.format(minutes, seconds)
+            self.minutes.configure(text=timer_str)
+
+            if(self.timer_running == False):
+                break
+
+            time.sleep(1)
+            if (self.timer_pause == False):
+                self.timer_duration -= 1
+            if self.timer_duration <= 0:
+                self.end_game_due_to_timeout()
+                break
+
+        if (self.timer_running == False):
+            if(self.combo.get()=="3 min"):
+                self.timer_duration=3*60
+            elif(self.combo.get()=="5 min"):
+                self.timer_duration=5*60
+            else:
+                self.timer_duration=8*60
+
+    def end_game_due_to_timeout(self):
+        
+        if self.board.turn == chess.WHITE:
+            self.winner = "Black"
+        else:
+            self.winner = "White"
+        self.status_label.config(text=f"Congratulation! {self.winner} wins!")
+
+        if  self.game_mode == "multi":
+            self.points+=1
+            self.update_user_points(self.username, self.points)
+
+        self.timer_running=False
+        self.canvas.delete("all")
+        self.combo.config(state="normal")
+
+        if(self.combo.get()=="3 min"):
+            self.timer_duration=3*60
+        elif(self.combo.get()=="5 min"):
+            self.timer_duration=5*60
+        else:
+            self.timer_duration=8*60
+
+
+class ChessGame:
+    def __init__(self, host, port, db_manager,game_board):
+        self.HOST = host
+        self.PORT = port
+        self.db_connection = db_manager.db_connection
+        self.master_db_connection = db_manager.master_db_connection
+
+        self.game_board = game_board
+        self.initialize_game()
+
+    def initialize_game(self):
+        self.piece_symbols = self.game_board.piece_symbols
+        self.board = self.game_board.board
+        self.score = 0
+        self.client_socket = None
+        self.timer_duration = 180 
+        self.root = tk.Tk()
+        self.root.title("Chess Game")
+        self.game_mode = ""
+        self.players = []
+        self.move_history = []
+        self.username_entry = tk.Entry(self.root)
+        self.username_entry.pack()
+        self.username_entry.config(state="normal")
+        self.username = ""
+        self.winner = ""
+        self.points = 0
+        self.game_id = ""
+        self.square_size_y = 55
+        self.square_size_x = 75
+        self.player_colors = {'white': "White", 'black': "Black"}
+        self.assigned_color = "white"
+        self.isPlayerBlack=False
+        self.first_game = True
+        self.turn_history = queue.Queue()
+        self.combo = ttk.Combobox(self.root)
+        self.combo['values'] = ('3 min', '5 min', '10 min')
+        self.combo.set('3 min')
+        self.timer_manager = TimerManager()
+        self.create_widgets()
+        self.disable_buttons()
+        self.create_leaderboard()
+
+    def on_select_minute(self,event):
+        if(self.combo.get()=="3 min"):
+            self.timer_duration=3*60
+        elif(self.combo.get()=="5 min"):
+            self.timer_duration=5*60
+        else:
+            self.timer_duration=8*60
+
+    def create_widgets(self):
+        self.set_username_button = ttk.Button(self.root, text="Set Username", command=self.set_username)
+        self.set_username_button.pack()
+        self.connect_button = ttk.Button(self.root, text="Connect to Game", command=self.connect_to_game)
+        self.connect_button.pack()
+        self.minutes = tk.Label(self.root, text="Select timer:")
+        self.minutes.pack()
+        self.combo.bind("<<ComboboxSelected>>", self.on_select_minute)
+        self.combo.pack()
+        self.connect_button.config(state="disabled")
         self.canvas = tk.Canvas(self.root, width=0, height=0)
         self.canvas.pack(side="left",fill="y")
         self.undo_button = ttk.Button(self.root, text="Undo Last Move", command=self.undo_last_move)
@@ -120,8 +288,9 @@ class ChessGame:
         self.status_label = tk.Label(self.root, text="", font=("Arial", 10))
         self.status_label.pack()
 
-        self.new_game_button = ttk.Button(self.root, text="New Game", command=lambda: self.new_game())
-        self.new_game_button.pack()
+        self.stop_game_button = ttk.Button(self.root, text="Stop game", command=lambda: self.stop_game())
+        self.stop_game_button.pack()
+        self.stop_game_button.config(state="disabled")
 
         level_label = tk.Label(self.root, text="Choose AI level:")
         level_label.pack()
@@ -191,34 +360,6 @@ class ChessGame:
         except pyodbc.Error as e:
             print(f"Error fetching leaderboard data: {str(e)}")
 
-    def create_database_if_not_exists(self):
-        try:
-            cursor = self.master_db_connection.cursor()
-            cursor.execute(f"SELECT * FROM sys.databases WHERE name = '{self.db_database}'")
-            database_exists = cursor.fetchone()
-            if not database_exists:
-                cursor.execute(f"CREATE DATABASE {self.db_database}")
-                self.master_db_connection.commit()
-            cursor.close()
-        except pyodbc.Error as e:
-            print(f"Error creating/checking database: {str(e)}")
-
-    def create_table_if_not_exists(self):
-        try:
-            cursor = self.db_connection.cursor()
-            cursor.execute(
-                f"IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'Users') "
-                f"CREATE TABLE Users ("
-                f"ID INT IDENTITY(1,1) PRIMARY KEY,"
-                f"Username VARCHAR(255),"
-                f"Points INT"
-                f")"
-            )
-            self.db_connection.commit()
-            cursor.close()
-        except pyodbc.Error as e:
-            print(f"Error creating/checking table: {str(e)}")
-
     def set_username(self):
         cursor = self.db_connection.cursor()
         self.username = self.username_entry.get()
@@ -243,8 +384,9 @@ class ChessGame:
         self.connect_button.config(state="disabled")
         self.enable_buttons()
         self.assigned_color = self.client_socket.recv(1024).decode()
+        self.isPlayerBlack = self.assigned_color == "black"
         self.status_label.config(text=f"You are playing as {self.player_colors[self.assigned_color]}.")
-        self.update_board()
+        self.game_board.update_board(self.canvas, self.isPlayerBlack)
         receive_thread = threading.Thread(target=self.receive_moves)
         receive_thread.start()
 
@@ -254,30 +396,33 @@ class ChessGame:
         self.easy_radio.config(state="normal")
         self.medium_radio.config(state="normal")
         self.hard_radio.config(state="normal")
-        self.new_game_button.config(state="normal")
         self.canvas.config(state="normal")
 
     def check_win(self):
+        if(self.game_mode=="multi"):
+            self.timer_manager.timer_pause=False
         if self.board.is_checkmate():
             if self.board.turn == chess.WHITE:
                 self.winner = "Black"
-            else:
+            else: 
                 self.winner = "White"
             self.status_label.config(text=f"Congratulation! {self.winner} wins!")
             self.points+=1
             self.update_user_points(self.username, self.points)
             self.disable_buttons()
+            self.timer_manager.timer_running = False
             return True
         elif self.board.is_stalemate():
             self.status_label.config(text="")
             self.disable_buttons()
+            self.timer_manager.timer_running = False
             return True
         return False
 
     def update_user_points(self, username, points):
         try:
             cursor = self.db_connection.cursor()
-            cursor.execute("UPDATE Users SET Points = Points + ? WHERE Username = ?", (points, username))
+            cursor.execute("UPDATE Users SET Points = ? WHERE Username = ?", (points, username))
             self.db_connection.commit()
             cursor.close()
         except pyodbc.Error as e:
@@ -312,24 +457,7 @@ class ChessGame:
         while not self.turn_history.empty():
             move = self.turn_history.get()
             print(f"Move: {move.uci()}")
-
-    def update_board(self):
-        self.canvas.delete("all")
-        for row in range(8):
-            for col in range(8):
-                x1 = col * self.square_size_x
-                y1 = row * self.square_size_y
-                x2 = x1 + self.square_size_x
-                y2 = y1 + self.square_size_y
-                color = "brown" if (row + col) % 2 == 0 else "grey"
-                self.canvas.create_rectangle(x1, y1, x2, y2, fill=color)
-                piece = self.board.piece_at(chess.square(col, 7 - row))
-                if piece is not None:
-                    symbol = self.piece_symbols[piece.symbol()]
-                    figColor = "white" if piece.color == chess.WHITE else "black"
-                    self.canvas.create_text((x1 + x2) / 2, (y1 + y2) / 2, text=symbol, font=("Courier", 24),
-                                            fill=figColor)
-        self.canvas.update()
+        
 
     def ask_for_promotion_piece(self):
         promotion_piece = None
@@ -373,7 +501,11 @@ class ChessGame:
                 move_uci = self.client_socket.recv(1024).decode()
                 move = chess.Move.from_uci(move_uci)
                 self.board.push(move)
-                self.update_board()
+                self.game_board.update_board(self.canvas, self.isPlayerBlack)
+                self.timer_manager.timer_pause == False
+                if self.check_win():
+                    break
+                
                 self.turn_label.config(
                     text=f"{self.username}'s Turn" if self.board.turn == chess.BLACK else f"{self.username}'s Turn")
 
@@ -397,9 +529,12 @@ class ChessGame:
             self.send_move(move)
         self.record_turn(self.game_id, move)
         self.board.push(move)
+        if self.game_mode !="single":
+            self.timer_manager.timer_pause=True
+            
         self.move_history.append(move)
 
-        self.update_board()
+        self.game_board.update_board(self.canvas, self.isPlayerBlack)
 
         if self.check_win():
             self.create_leaderboard()
@@ -407,13 +542,16 @@ class ChessGame:
             self.moves_listbox.pack_forget()
             self.undo_button.config(state="disabled")
             self.canvas.config(width=0, height=0)
-            self.new_game_button.config(state="normal")
             return
 
         if self.game_mode == "single":
-            self.ai_move(self.level_var.get())
+            self.turn_label.config(text="Black's Turn" if self.board.turn == chess.BLACK else "White's Turn")
+            random_number = random.randint(1, 4)
+            threading.Timer(random_number, self.ai_move, args=(self.level_var.get(),)).start()
         if self.game_mode == "multi":
             self.turn_label.config(text="Black's Turn" if self.board.turn == chess.BLACK else "White's Turn")
+            self.timer_manager.timer_pause=True
+            
         else:
             self.turn_label.config(text="Black's Turn" if self.board.turn == chess.BLACK else "White's Turn")
 
@@ -421,7 +559,7 @@ class ChessGame:
         if self.move_history:
             last_move = self.move_history.pop()
             self.board.pop()
-            self.update_board()
+            self.game_board.update_board(self.canvas, self.isPlayerBlack)
             self.status_label.config(text=f"Last move undone: {last_move.uci()}")
         else:
             self.status_label.config(text="No move to undo.")
@@ -432,7 +570,7 @@ class ChessGame:
         return ai_move
 
     def ai_move(self, level):
-        self.update_board()
+        self.game_board.update_board(self.canvas, self.isPlayerBlack)
         if level == "easy":
             move = self.easy_ai_move()
         elif level == "medium":
@@ -440,7 +578,7 @@ class ChessGame:
         elif level == "hard":
             move = self.find_best_move(self.board, depth=5)
         self.board.push(move)
-        self.update_board()
+        self.game_board.update_board(self.canvas, self.isPlayerBlack)
 
     def find_best_move(self, board, depth):
         legal_moves = list(board.legal_moves)
@@ -502,8 +640,23 @@ class ChessGame:
                     evaluation -= piece_values.get(piece.piece_type, 0)
         return evaluation
 
+    def stop_game(self):
+        self.single_player_button.config(state="normal")
+        self.multi_player_button.config(state="normal")
+        self.timer_manager.stop_timer()
+        self.stop_game_button.config(state="disabled")
+
     def new_game(self):
-        self.start_timer()
+        self.timer_manager.set_parameters(self.board, self.minutes, self.game_mode, self.points, self.combo, self.username, self.status_label, self.canvas)
+        minutes, seconds = divmod(self.timer_duration, 60)
+        timer_str = '{:02d}:{:02d}'.format(minutes, seconds)
+        self.minutes.configure(text=timer_str)
+
+        if(self.game_mode=="single"):
+            self.timer_manager.start_timer(self.timer_duration)
+            self.timer_manager.timer_pause=False
+            
+        self.combo.config(state="disabled")
         self.leaderboard_table.pack_forget()
         self.leaderboard_label.pack_forget()
         self.canvas.config(width=600, height=400)
@@ -513,49 +666,31 @@ class ChessGame:
         self.fetch_and_display_moves(self.game_id)
         self.board.set_fen(chess.STARTING_FEN)
         self.enable_buttons()
-        self.update_board()
+        self.game_board.update_board(self.canvas, self.isPlayerBlack)
         self.status_label.config(text="New game started.")
+        self.single_player_button.config(state="disabled")
+        self.multi_player_button.config(state="disabled")
+        self.stop_game_button.config(state="normal")
 
     def single_player(self):
         self.game_mode = "single"
         self.enable_buttons()
         level = self.level_var.get()
         self.new_game()
-        self.ai_move(level)
+        random_number = random.randint(0, 1)
+        if(random_number == 1):
+            self.isPlayerBlack = True
+            self.game_board.update_board(self.canvas, self.isPlayerBlack)
+            random_number = random.randint(1, 4)
+            threading.Timer(random_number, self.ai_move, args=(level,)).start()
+            
+        else:
+            self.isPlayerBlack = False
+            self.game_board.update_board(self.canvas, self.isPlayerBlack)
         self.status_label.config(text="Single-player game started. You are playing as Black.")
 
-    def create_games_table_if_not_exists(self):
-        try:
-            cursor = self.db_connection.cursor()
-            cursor.execute(
-                f"IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'Games') "
-                f"CREATE TABLE Games ("
-                f"ID UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID()"
-                f")"
-            )
-            self.db_connection.commit()
-            cursor.close()
-        except pyodbc.Error as e:
-            print(f"Error creating/checking games table: {str(e)}")
-
-    def create_turns_table_if_not_exists(self):
-        try:
-            cursor = self.db_connection.cursor()
-            cursor.execute(
-                f"IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'Moves') "
-                f"CREATE TABLE Moves ("
-                f"ID INT IDENTITY(1,1) PRIMARY KEY,"
-                f"GameID UNIQUEIDENTIFIER,"
-                f"Move NVARCHAR(255)"
-                f")"
-            )
-            self.db_connection.commit()
-            cursor.close()
-        except pyodbc.Error as e:
-            print(f"Error creating/checking turns table: {str(e)}")
-
     def create_new_game(self):
-        game_id = uuid.uuid4()  
+        game_id = uuid.uuid4()  # Generate a unique game ID
         try:
             cursor = self.db_connection.cursor()
             cursor.execute("INSERT INTO Games (ID) VALUES (?)", (str(game_id),))
@@ -586,18 +721,20 @@ class ChessGame:
 
     def multi_player(self):
         self.new_game()
+        self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.game_mode = "multi"
         self.username_entry.config(state="normal")
         self.connect_button.config(state="normal")
         self.disable_buttons()
         self.status_label.config(text="Multi-player game started. You are playing as White.")
+        self.timer_manager.timer_pause=True
+        self.timer_manager.start_timer(self.timer_duration)
 
         try:
             self.players.append(self.username)
             player_list = ",".join(self.players)
             self.client_socket.send(player_list.encode())
-
-
+            
         except Exception as e:
             print(f"Error starting a multiplayer game: {str(e)}")
 
@@ -607,8 +744,8 @@ class ChessGame:
         self.easy_radio.config(state="disabled")
         self.medium_radio.config(state="disabled")
         self.hard_radio.config(state="disabled")
-        self.new_game_button.config(state="disabled")
         self.canvas.delete("all")
+        self.timer_manager.timer_running=False
 
     def on_square_click(self, event):
         self.easy_radio.config(state="disabled")
@@ -616,17 +753,22 @@ class ChessGame:
         self.hard_radio.config(state="disabled")
         if self.game_mode == "single":
             self.undo_button.config(state="normal")
+        if(self.game_mode == "multi"):
+            self.timer_manager.timer_pause=False
+
         x, y = event.x, event.y
         col = x // self.square_size_x
         row = y // self.square_size_y
         square = chess.square(col, 7 - row)
+        if self.isPlayerBlack:
+            square = chess.square(col, row)
 
         if self.selected_square is None:
             piece = self.board.piece_at(square)
             if piece is not None and piece.color == self.board.turn:
                 self.selected_square = square
                 self.possible_moves = list(self.board.legal_moves)
-                self.update_board()
+                self.game_board.update_board(self.canvas, self.isPlayerBlack)
                 self.highlight_square(square)
         else:
             move = chess.Move(self.selected_square, square)
@@ -634,15 +776,18 @@ class ChessGame:
                     self.board.piece_at(move.from_square).piece_type == chess.PAWN and ("1" in str(move))):
                 self.player_move(move)
             elif (self.board.piece_at(move.from_square).color == chess.WHITE and
-                  self.board.piece_at(move.from_square).piece_type == chess.PAWN and ("8" in str(move))):
+                self.board.piece_at(move.from_square).piece_type == chess.PAWN and ("8" in str(move))):
                 self.player_move(move)
             elif move in self.possible_moves:
                 self.player_move(move)
             self.selected_square = None
+        
 
     def highlight_square(self, square):
         col = chess.square_file(square)
         row = 7 - chess.square_rank(square)
+        if self.isPlayerBlack:
+            row = chess.square_rank(square)
         x1 = col * self.square_size_x
         y1 = row * self.square_size_y
         x2 = x1 + self.square_size_x
@@ -664,9 +809,26 @@ class ChessGame:
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
         self.root.mainloop()
 
+
+class GameManager:
+    def __init__(self):
+        self.games = []
+
+    def create_game(self, host, port, db_manager, game_board):
+        game = ChessGame(host, port, db_manager, game_board)
+        self.games.append(game)
+        return game
+
+    def remove_game(self, game):
+        self.games.remove(game)
+
+
 if __name__ == "__main__":
     HOST = '127.0.0.1'
     PORT = 8080
-    game = ChessGame(HOST, PORT)
+    db_manager = DatabaseManager("", "","","")
+    game_board = GameBoard()
+    game_manager = GameManager()
+    game = game_manager.create_game(HOST, PORT, db_manager, game_board)
     game.launch_game()
     game.display_turn_history()

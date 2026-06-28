@@ -45,6 +45,68 @@ class ChessGame:
         self.isPlayerBlack=False
         self.first_game = True
         self.turn_history = queue.Queue()
+        self.piece_square_tables = {
+            chess.PAWN: [
+                0, 0, 0, 0, 0, 0, 0, 0,
+                5, 5, 5, 5, 5, 5, 5, 5,
+                1, 1, 2, 3, 3, 2, 1, 1,
+                0.5, 0.5, 1, 2.5, 2.5, 1, 0.5, 0.5,
+                0, 0, 0, 2, 2, 0, 0, 0,
+                0.5, -0.5, -1, 0, 0, -1, -0.5, 0.5,
+                0.5, 1, 1, -2, -2, 1, 1, 0.5,
+                0, 0, 0, 0, 0, 0, 0, 0,
+            ],
+            chess.KNIGHT: [
+                -5, -4, -3, -3, -3, -3, -4, -5,
+                -4, -2, 0, 0, 0, 0, -2, -4,
+                -3, 0, 1, 1.5, 1.5, 1, 0, -3,
+                -3, 0.5, 1.5, 2, 2, 1.5, 0.5, -3,
+                -3, 0, 1.5, 2, 2, 1.5, 0, -3,
+                -3, 0.5, 1, 1.5, 1.5, 1, 0.5, -3,
+                -4, -2, 0, 0.5, 0.5, 0, -2, -4,
+                -5, -4, -3, -3, -3, -3, -4, -5,
+            ],
+            chess.BISHOP: [
+                -2, -1, -1, -1, -1, -1, -1, -2,
+                -1, 0.5, 0, 0, 0, 0, 0.5, -1,
+                -1, 1, 1, 1, 1, 1, 1, -1,
+                -1, 0, 1, 1, 1, 1, 0, -1,
+                -1, 0.5, 0.5, 1, 1, 0.5, 0.5, -1,
+                -1, 0, 0.5, 1, 1, 0.5, 0, -1,
+                -1, 0, 0, 0, 0, 0, 0, -1,
+                -2, -1, -1, -1, -1, -1, -1, -2,
+            ],
+            chess.ROOK: [
+                0, 0, 0, 0.5, 0.5, 0, 0, 0,
+                -0.5, 0, 0, 0, 0, 0, 0, -0.5,
+                -0.5, 0, 0, 0, 0, 0, 0, -0.5,
+                -0.5, 0, 0, 0, 0, 0, 0, -0.5,
+                -0.5, 0, 0, 0, 0, 0, 0, -0.5,
+                -0.5, 0, 0, 0, 0, 0, 0, -0.5,
+                0.5, 1, 1, 1, 1, 1, 1, 0.5,
+                0, 0, 0, 0, 0, 0, 0, 0,
+            ],
+            chess.QUEEN: [
+                -2, -1, -1, -0.5, -0.5, -1, -1, -2,
+                -1, 0, 0, 0, 0, 0, 0, -1,
+                -1, 0, 0.5, 0.5, 0.5, 0.5, 0, -1,
+                -0.5, 0, 0.5, 0.5, 0.5, 0.5, 0, -0.5,
+                0, 0, 0.5, 0.5, 0.5, 0.5, 0, -0.5,
+                -1, 0.5, 0.5, 0.5, 0.5, 0.5, 0, -1,
+                -1, 0, 0.5, 0, 0, 0, 0, -1,
+                -2, -1, -1, -0.5, -0.5, -1, -1, -2,
+            ],
+            chess.KING: [
+                -3, -4, -4, -5, -5, -4, -4, -3,
+                -3, -4, -4, -5, -5, -4, -4, -3,
+                -3, -4, -4, -5, -5, -4, -4, -3,
+                -3, -4, -4, -5, -5, -4, -4, -3,
+                -2, -3, -3, -4, -4, -3, -3, -2,
+                -1, -2, -2, -2, -2, -2, -2, -1,
+                2, 2, 0, 0, 0, 0, 2, 2,
+                2, 3, 1, 0, 0, 1, 3, 2,
+            ],
+        }
         self.combo = ttk.Combobox(self.root)
         self.combo['values'] = ('3 min', '5 min', '10 min')
         self.combo.set('3 min')
@@ -368,53 +430,64 @@ class ChessGame:
         if level == "easy":
             move = self.easy_ai_move()
         elif level == "medium":
-            move = self.find_best_move(self.board, depth=3)
+            move = self.find_best_move(self.board, depth=2)
         elif level == "hard":
-            move = self.find_best_move(self.board, depth=5)
+            move = self.find_best_move(self.board, depth=3)
+
+        if move is None:
+            return
+
         self.board.push(move)
         self.game_board.update_board(self.canvas, self.isPlayerBlack)
+        self.turn_label.config(text="Black's Turn" if self.board.turn == chess.BLACK else "White's Turn")
 
     def find_best_move(self, board, depth):
         legal_moves = list(board.legal_moves)
-        best_move = None
-        best_eval = -float('inf')
+        if not legal_moves:
+            return None
 
+        best_move = legal_moves[0]
+        best_eval = -float('inf')
         for move in legal_moves:
             board.push(move)
-            eval = self.minimax(board, depth - 1, -float('inf'), float('inf'), False)
-            if eval > best_eval:
-                best_eval = eval
-                best_move = move
+            eval_score = self.minimax(board, depth - 1, -float('inf'), float('inf'), False)
             board.pop()
+            if eval_score > best_eval:
+                best_eval = eval_score
+                best_move = move
 
         return best_move
 
     def minimax(self, board, depth, alpha, beta, maximizing_player):
         if depth == 0 or board.is_game_over():
             return self.evaluate_board(board)
+
         legal_moves = list(board.legal_moves)
+        if not legal_moves:
+            return self.evaluate_board(board)
+
         if maximizing_player:
             max_eval = -float('inf')
             for move in legal_moves:
                 board.push(move)
-                eval = self.minimax(board, depth - 1, alpha, beta, False)
-                max_eval = max(max_eval, eval)
-                alpha = max(alpha, eval)
+                eval_score = self.minimax(board, depth - 1, alpha, beta, False)
                 board.pop()
+                max_eval = max(max_eval, eval_score)
+                alpha = max(alpha, eval_score)
                 if beta <= alpha:
                     break
             return max_eval
-        else:
-            min_eval = float('inf')
-            for move in legal_moves:
-                board.push(move)
-                eval = self.minimax(board, depth - 1, alpha, beta, True)
-                min_eval = min(min_eval, eval)
-                beta = min(beta, eval)
-                board.pop()
-                if beta <= alpha:
-                    break
-            return min_eval
+
+        min_eval = float('inf')
+        for move in legal_moves:
+            board.push(move)
+            eval_score = self.minimax(board, depth - 1, alpha, beta, True)
+            board.pop()
+            min_eval = min(min_eval, eval_score)
+            beta = min(beta, eval_score)
+            if beta <= alpha:
+                break
+        return min_eval
 
     def evaluate_board(self, board):
         piece_values = {
@@ -427,11 +500,18 @@ class ChessGame:
         evaluation = 0
         for square in chess.SQUARES:
             piece = board.piece_at(square)
-            if piece is not None:
-                if piece.color == chess.WHITE:
-                    evaluation += piece_values.get(piece.piece_type, 0)
-                else:
-                    evaluation -= piece_values.get(piece.piece_type, 0)
+            if piece is None:
+                continue
+            piece_value = piece_values.get(piece.piece_type, 0)
+            if piece.color == chess.WHITE:
+                evaluation += piece_value + self.piece_square_tables[piece.piece_type][square] * 0.1
+            else:
+                evaluation -= piece_value + self.piece_square_tables[piece.piece_type][square] * 0.1
+
+        if board.is_checkmate():
+            return -100000 if board.turn == chess.WHITE else 100000
+        if board.is_stalemate():
+            return 0
         return evaluation
 
     def stop_game(self):

@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chess Game Overview</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+      background: #f4f6fb;
+      color: #1f2937;
+    }
+    .container {
+      max-width: 900px;
+      margin: 40px auto;
+      padding: 24px;
+      background: white;
+      border-radius: 16px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.08);
+    }
+    h1, h2 {
+      color: #111827;
+    }
+    .hero {
+      background: linear-gradient(135deg, #1e3a8a, #2563eb);
+      color: white;
+      padding: 24px;
+      border-radius: 12px;
+      margin-bottom: 24px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 16px;
+      margin-top: 20px;
+    }
+    .card {
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      border-radius: 10px;
+      padding: 16px;
+    }
+    ul {
+      padding-left: 20px;
+    }
+    .highlight {
+      font-weight: bold;
+      color: #2563eb;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="hero">
+      <h1>Chess Game</h1>
+      <p>This is a simple chess application where you can play against the computer or challenge another player.</p>
+    </div>
+
+    <h2>How it works</h2>
+    <p>Choose your preferred mode and start playing instantly. The game is designed to be easy to understand while still offering a fun experience.</p>
+
+    <div class="grid">
+      <div class="card">
+        <h3>Single Player</h3>
+        <ul>
+          <li>Play against the built-in AI</li>
+          <li>Select an AI difficulty level</li>
+          <li>Use the timer to add extra challenge</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>Multiplayer</h3>
+        <ul>
+          <li>Connect to another player</li>
+          <li>Play live over the network</li>
+          <li>Watch moves update in real time</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>Game Features</h3>
+        <ul>
+          <li>Leaderboard with player points</li>
+          <li>Move history panel</li>
+          <li>Timer and game controls</li>
+        </ul>
+      </div>
+    </div>
+
+    <p style="margin-top: 24px;"><span class="highlight">Tip:</span> Start by entering a username, then choose whether you want to play alone or with another player.</p>
+  </div>
+</body>
+</html>
